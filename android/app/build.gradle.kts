@@ -11,7 +11,8 @@ val hasReleaseKey = releaseKeystore.exists() && System.getenv("KEYSTORE_PASSWORD
 
 android {
     namespace = "uk.bertie203.project_todo"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler_android 14.x needs compile SDK 37.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
