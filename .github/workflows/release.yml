@@ -40,6 +40,30 @@ jobs:
           fi
           echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
 
+      - name: Check keystore secrets
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "Keystore size: $(stat -c %s android/app/release.jks) bytes"
+          echo "Keystore sha256 starts: $(sha256sum android/app/release.jks | cut -c1-16)"
+          echo "Password lengths: store ${#KEYSTORE_PASSWORD}, key ${#KEY_PASSWORD}, alias ${#KEY_ALIAS}"
+          if ! keytool -list -keystore android/app/release.jks -storepass "$KEYSTORE_PASSWORD" > /tmp/ks.txt 2>&1; then
+            echo "::error::KEYSTORE_PASSWORD does not open the keystore, or KEYSTORE_BASE64 is damaged"
+            grep -v JAVA_TOOL /tmp/ks.txt | tail -3
+            exit 1
+          fi
+          if ! keytool -list -keystore android/app/release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::KEY_ALIAS is not in the keystore"
+            exit 1
+          fi
+          if [ "$KEY_PASSWORD" != "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::KEY_PASSWORD must equal KEYSTORE_PASSWORD for this keystore"
+            exit 1
+          fi
+          echo "Keystore secrets OK"
+
       - name: Build APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
