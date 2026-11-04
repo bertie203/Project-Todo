@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "project-todo",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "project-todo",
+      "database_id": "85d75b68-ec3b-4c8f-be32-11ea98160fe7",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "ea9af557916646acb1f1a9413234cfee" }
+  ],
+  "vars": { "TIME_ZONE": "Europe/London" }
+  // Secrets (set with `wrangler secret put`): LOGIN_PASSWORD, APP_TOKEN
+}
