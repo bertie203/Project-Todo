@@ -28,7 +28,10 @@ class FirstRunScreen extends StatelessWidget {
             FilledButton(
               onPressed: () async {
                 await Permission.notification.request();
-                await Permission.scheduleExactAlarm.request();
+                if (await permissionStatus(Permission.scheduleExactAlarm) !=
+                    PermissionStatus.granted) {
+                  await fixPermission(Permission.scheduleExactAlarm);
+                }
               },
               child: const Text('Allow notifications and alarms'),
             ),

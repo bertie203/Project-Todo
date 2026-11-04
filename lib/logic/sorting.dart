@@ -59,3 +59,25 @@ TodaySections buildTodaySections(List<TaskWithProject> rows, DateTime now) {
   done.sort(cmp);
   return TodaySections(overdue, today, done);
 }
+
+/// Tasks due on a day other than today: still open, and done.
+class DaySections {
+  DaySections(this.open, this.done);
+  final List<TaskWithProject> open;
+  final List<TaskWithProject> done;
+}
+
+DaySections buildDaySections(List<TaskWithProject> rows, DateTime day) {
+  final open = <TaskWithProject>[];
+  final done = <TaskWithProject>[];
+  for (final r in rows) {
+    final due = r.task.dueDate;
+    if (due == null || !sameDay(due, day)) continue;
+    (r.task.done ? done : open).add(r);
+  }
+  int cmp(TaskWithProject a, TaskWithProject b) =>
+      compareByPriorityThenTime(a.task, b.task);
+  open.sort(cmp);
+  done.sort(cmp);
+  return DaySections(open, done);
+}

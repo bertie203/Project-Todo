@@ -60,6 +60,23 @@ class TaskService {
     return t;
   }
 
+  /// Moves a task to [date] at [minutes] after midnight (null = no time).
+  /// The alarm moves with it. A monthly task repeats on the new day.
+  Future<Task> reschedule(Task task, DateTime date, int? minutes) {
+    final sameDate =
+        task.dueDate != null &&
+        task.dueDate!.year == date.year &&
+        task.dueDate!.month == date.month &&
+        task.dueDate!.day == date.day;
+    return save(
+      task.copyWith(
+        dueDate: Value(DateTime(date.year, date.month, date.day)),
+        dueTime: Value(minutes),
+        recurrenceDay: sameDate ? Value(task.recurrenceDay) : const Value(null),
+      ),
+    );
+  }
+
   Future<void> delete(int taskId) async {
     await alarms.cancelFor(taskId);
     await db.deleteTask(taskId);

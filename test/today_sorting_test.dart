@@ -109,4 +109,16 @@ void main() {
       'green soon',
     ]);
   });
+
+  test('other day: open and done tasks due that day', () {
+    final s = buildDaySections([
+      t('missed green', due: yesterday),
+      t('missed red', p: Priority.red, due: yesterday),
+      t('done', due: yesterday, done: true, doneAt: yesterday),
+      t('other day', due: today),
+      t('undated'),
+    ], yesterday);
+    expect(titles(s.open), ['missed red', 'missed green']);
+    expect(titles(s.done), ['done']);
+  });
 }

@@ -43,7 +43,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   Future<void> _refresh() async {
     final m = <Permission, PermissionStatus>{};
     for (final p in appPermissions) {
-      m[p.permission] = await p.permission.status;
+      m[p.permission] = await permissionStatus(p.permission);
     }
     if (mounted) setState(() => _status = m);
   }

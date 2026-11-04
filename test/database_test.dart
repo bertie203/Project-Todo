@@ -152,6 +152,37 @@ void main() {
     });
   });
 
+  group('reschedule', () {
+    test('moves date and time and keeps the alarm', () async {
+      final t = await service.create(
+        draft('Dentist', due: DateTime(2026, 10, 31), time: 600, alarm: true),
+      );
+      alarms.scheduled.clear();
+      final moved = await service.reschedule(t, DateTime(2026, 11, 3), 14 * 60);
+      expect(moved.dueDate, DateTime(2026, 11, 3));
+      expect(moved.dueTime, 14 * 60);
+      expect(moved.alarm, isTrue);
+      expect(alarms.scheduled, [t.id]);
+      expect((await db.getTask(t.id))!.dueDate, DateTime(2026, 11, 3));
+    });
+
+    test('moving with no time drops the alarm', () async {
+      final t = await service.create(
+        draft('Call', due: DateTime(2026, 10, 31), time: 600, alarm: true),
+      );
+      final moved = await service.reschedule(t, DateTime(2026, 11, 1), null);
+      expect(moved.dueTime, isNull);
+      expect(moved.alarm, isFalse);
+    });
+
+    test('monthly task repeats on the new day', () async {
+      final t = await service.create(
+        draft('Rent', due: DateTime(2026, 10, 31), r: Recurrence.monthly),
+      );
+      final moved = await service.reschedule(t, DateTime(2026, 11, 5), null);
+      expect(moved.recurrenceDay, 5);
+    });
+  });
   group('queries', () {
     test('today query returns overdue, today and done today', () async {
       await service.create(draft('overdue', due: DateTime(2026, 10, 20)));

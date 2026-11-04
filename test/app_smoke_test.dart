@@ -75,7 +75,8 @@ void main() {
 
       expect(find.text('Fix tap'), findsOneWidget);
       expect(find.text('1 task left today'), findsOneWidget);
-      expect(find.text('09:00 · House'), findsOneWidget);
+      expect(find.text('09:00'), findsOneWidget);
+      expect(find.text('House'), findsOneWidget);
 
       await tester.tap(find.text('Calendar'));
       await settle(tester);
@@ -116,6 +117,74 @@ void main() {
 
       await tester.tap(find.text('Today'));
       await settle(tester);
+      await closeDb(tester);
+    },
+  );
+
+  testWidgets(
+    'pencil moves a task to tomorrow',
+    timeout: const Timeout(Duration(seconds: 60)),
+    (tester) async {
+      await tester.runAsync(() async {
+        final p = await db.insertProject('Garden');
+        await db.insertTask(
+          TasksCompanion.insert(
+            title: 'Mow lawn',
+            projectId: Value(p),
+            dueDate: Value(dateOnly(DateTime.now())),
+          ),
+        );
+      });
+      await pumpApp(tester);
+      expect(find.text('Garden'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Reschedule'));
+      await settle(tester);
+      await tester.tap(find.text('Tomorrow'));
+      await settle(tester);
+      expect(find.textContaining('Moved to'), findsOneWidget);
+      expect(find.text('Nothing due today'), findsOneWidget);
+
+      final now = DateTime.now();
+      final task = await tester.runAsync(() => db.select(db.tasks).getSingle());
+      expect(task!.dueDate, DateTime(now.year, now.month, now.day + 1));
+      await closeDb(tester);
+    },
+  );
+
+  testWidgets(
+    'today tab swipes to yesterday and tomorrow',
+    timeout: const Timeout(Duration(seconds: 60)),
+    (tester) async {
+      final now = DateTime.now();
+      final yesterday = DateTime(now.year, now.month, now.day - 1);
+      final tomorrow = DateTime(now.year, now.month, now.day + 1);
+      await tester.runAsync(() async {
+        await db.insertTask(
+          TasksCompanion.insert(title: 'Missed', dueDate: Value(yesterday)),
+        );
+        await db.insertTask(
+          TasksCompanion.insert(title: 'Later', dueDate: Value(tomorrow)),
+        );
+      });
+      await pumpApp(tester);
+      // Yesterday's undone task shows as overdue on today.
+      expect(find.text('Overdue'), findsOneWidget);
+      expect(find.text('Later'), findsNothing);
+
+      await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+      await settle(tester);
+      expect(find.text('Later'), findsOneWidget);
+      expect(find.textContaining('Tomorrow'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back to today'));
+      await settle(tester);
+      await tester.fling(find.byType(PageView), const Offset(400, 0), 1000);
+      await settle(tester);
+      expect(find.text('Not done'), findsOneWidget);
+      expect(find.text('Missed'), findsWidgets);
+      expect(find.textContaining('Yesterday'), findsOneWidget);
+
       await closeDb(tester);
     },
   );

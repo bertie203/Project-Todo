@@ -32,6 +32,15 @@ final todayTasksProvider = StreamProvider<List<TaskWithProject>>(
   (ref) => ref.watch(dbProvider).watchTodayTasks(ref.watch(dayProvider)),
 );
 
+/// Tasks due on one day (local midnight). Used by the Today tab when
+/// swiped to a day other than today.
+final dayTasksProvider = StreamProvider.family<List<TaskWithProject>, DateTime>(
+  (ref, day) {
+    final next = DateTime(day.year, day.month, day.day + 1);
+    return ref.watch(dbProvider).watchTasksBetween(day, next);
+  },
+);
+
 /// Tasks in a calendar month, keyed by the first day of the month.
 /// Also covers the days shown from the next and previous month.
 final monthTasksProvider =
