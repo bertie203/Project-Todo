@@ -24,6 +24,9 @@ TaskWithProject t(
     done: done,
     doneAt: doneAt,
     createdAt: DateTime(2026, 1, 1),
+    uid: 'u$_id',
+    updatedAt: 0,
+    dirty: false,
   ),
   null,
 );

@@ -43,7 +43,15 @@ class TaskService {
   Future<Task> create(Task draft) async {
     final t = normalise(draft);
     final id = await db.insertTask(
-      t.toCompanion(false).copyWith(id: const Value.absent()),
+      // uid and updatedAt get fresh values from their defaults.
+      t
+          .toCompanion(false)
+          .copyWith(
+            id: const Value.absent(),
+            uid: const Value.absent(),
+            updatedAt: const Value.absent(),
+            dirty: const Value(true),
+          ),
     );
     final saved = (await db.getTask(id))!;
     await alarms.scheduleFor(

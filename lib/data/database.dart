@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import '../logic/dates.dart';
+import '../logic/uid.dart';
 import 'enums.dart';
 
 export 'enums.dart';
@@ -13,6 +14,15 @@ class Projects extends Table {
   TextColumn get name => text()();
   BoolColumn get archived => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// Same id on the phone and in the cloud.
+  TextColumn get uid => text().clientDefault(newUid)();
+
+  /// Epoch ms of the last change. The newer change wins when syncing.
+  IntColumn get updatedAt => integer().clientDefault(nowMs)();
+
+  /// Changed on the phone and not yet uploaded.
+  BoolColumn get dirty => boolean().withDefault(const Constant(true))();
 }
 
 class Tasks extends Table {
@@ -38,6 +48,20 @@ class Tasks extends Table {
   BoolColumn get done => boolean().withDefault(const Constant(false))();
   DateTimeColumn get doneAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get uid => text().clientDefault(newUid)();
+  IntColumn get updatedAt => integer().clientDefault(nowMs)();
+  BoolColumn get dirty => boolean().withDefault(const Constant(true))();
+}
+
+/// Rows deleted on the phone, waiting to be deleted in the cloud.
+class Tombstones extends Table {
+  /// 'task' or 'project'.
+  TextColumn get kind => text()();
+  TextColumn get uid => text()();
+  IntColumn get deletedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {kind, uid};
 }
 
 class LedgerEntries extends Table {
@@ -58,7 +82,7 @@ class TaskWithProject {
   final String? projectName;
 }
 
-@DriftDatabase(tables: [Projects, Tasks, LedgerEntries])
+@DriftDatabase(tables: [Projects, Tasks, LedgerEntries, Tombstones])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
@@ -68,10 +92,35 @@ class AppDatabase extends _$AppDatabase {
   );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        // Sync columns. Existing rows get a uid and are marked for upload.
+        for (final table in ['projects', 'tasks']) {
+          await customStatement(
+            "ALTER TABLE $table ADD COLUMN uid TEXT NOT NULL DEFAULT ''",
+          );
+          await customStatement(
+            'ALTER TABLE $table ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0',
+          );
+          await customStatement(
+            'ALTER TABLE $table ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1 '
+            'CHECK (dirty IN (0, 1))',
+          );
+          final ids = await customSelect('SELECT id FROM $table').get();
+          for (final r in ids) {
+            await customStatement(
+              'UPDATE $table SET uid = ?, updated_at = ? WHERE id = ?',
+              [newUid(), nowMs(), r.read<int>('id')],
+            );
+          }
+        }
+        await m.createTable(tombstones);
+      }
+    },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
     },
@@ -140,10 +189,21 @@ class AppDatabase extends _$AppDatabase {
 
   Future<int> insertTask(TasksCompanion entry) => into(tasks).insert(entry);
 
-  Future<void> updateTask(Task task) => update(tasks).replace(task);
+  /// Saves a task and marks it for upload.
+  Future<void> updateTask(Task task) =>
+      update(tasks).replace(task.copyWith(updatedAt: nowMs(), dirty: true));
 
-  Future<void> deleteTask(int id) =>
-      (delete(tasks)..where((t) => t.id.equals(id))).go();
+  Future<void> deleteTask(int id) => transaction(() async {
+    final t = await getTask(id);
+    if (t == null) return;
+    await _tombstone('task', t.uid);
+    await (delete(tasks)..where((t) => t.id.equals(id))).go();
+  });
+
+  Future<void> _tombstone(String kind, String uid) => into(tombstones)
+      .insertOnConflictUpdate(
+        TombstonesCompanion.insert(kind: kind, uid: uid, deletedAt: nowMs()),
+      );
 
   /// Undone tasks with an alarm, not in an archived project.
   Future<List<Task>> alarmTasks() async {
@@ -172,35 +232,148 @@ class AppDatabase extends _$AppDatabase {
   Future<int> insertProject(String name) =>
       into(projects).insert(ProjectsCompanion.insert(name: name));
 
-  Future<void> renameProject(int id, String name) => (update(
-    projects,
-  )..where((p) => p.id.equals(id))).write(ProjectsCompanion(name: Value(name)));
+  Future<void> renameProject(int id, String name) =>
+      (update(projects)..where((p) => p.id.equals(id))).write(
+        ProjectsCompanion(
+          name: Value(name),
+          updatedAt: Value(nowMs()),
+          dirty: const Value(true),
+        ),
+      );
 
   Future<void> setProjectArchived(int id, bool archived) =>
       (update(projects)..where((p) => p.id.equals(id))).write(
-        ProjectsCompanion(archived: Value(archived)),
+        ProjectsCompanion(
+          archived: Value(archived),
+          updatedAt: Value(nowMs()),
+          dirty: const Value(true),
+        ),
       );
 
   /// Deletes a project. If [deleteTasks] is false its tasks become standalone.
   /// Returns the ids of the tasks that were deleted.
   Future<List<int>> deleteProject(int id, {required bool deleteTasks}) {
     return transaction(() async {
-      final ids =
-          await (selectOnly(tasks)
-                ..addColumns([tasks.id])
-                ..where(tasks.projectId.equals(id)))
-              .map((r) => r.read(tasks.id)!)
-              .get();
+      final rows = await (select(
+        tasks,
+      )..where((t) => t.projectId.equals(id))).get();
+      final ids = rows.map((t) => t.id).toList();
       if (deleteTasks) {
+        for (final t in rows) {
+          await _tombstone('task', t.uid);
+        }
         await (delete(tasks)..where((t) => t.projectId.equals(id))).go();
       } else {
         await (update(tasks)..where((t) => t.projectId.equals(id))).write(
-          const TasksCompanion(projectId: Value(null)),
+          TasksCompanion(
+            projectId: const Value(null),
+            updatedAt: Value(nowMs()),
+            dirty: const Value(true),
+          ),
         );
       }
+      final p = await getProject(id);
+      if (p != null) await _tombstone('project', p.uid);
       await (delete(projects)..where((p) => p.id.equals(id))).go();
       return deleteTasks ? ids : <int>[];
     });
+  }
+
+  // ---------- Sync ----------
+
+  Future<List<Project>> dirtyProjects() =>
+      (select(projects)..where((p) => p.dirty.equals(true))).get();
+
+  Future<List<Task>> dirtyTasks() =>
+      (select(tasks)..where((t) => t.dirty.equals(true))).get();
+
+  Future<List<Tombstone>> allTombstones() => select(tombstones).get();
+
+  Future<List<Project>> allProjects() => select(projects).get();
+
+  /// Clears the dirty flag only if the row was not changed again since
+  /// it was uploaded.
+  Future<void> markUploaded(
+    List<Project> ps,
+    List<Task> ts,
+    List<Tombstone> gone,
+  ) => transaction(() async {
+    for (final p in ps) {
+      await (update(projects)
+            ..where((x) => x.id.equals(p.id) & x.updatedAt.equals(p.updatedAt)))
+          .write(const ProjectsCompanion(dirty: Value(false)));
+    }
+    for (final t in ts) {
+      await (update(tasks)
+            ..where((x) => x.id.equals(t.id) & x.updatedAt.equals(t.updatedAt)))
+          .write(const TasksCompanion(dirty: Value(false)));
+    }
+    for (final g in gone) {
+      await (delete(tombstones)..where(
+            (x) =>
+                x.kind.equals(g.kind) &
+                x.uid.equals(g.uid) &
+                x.deletedAt.equals(g.deletedAt),
+          ))
+          .go();
+    }
+  });
+
+  Future<Project?> projectByUid(String uid) =>
+      (select(projects)..where((p) => p.uid.equals(uid))).getSingleOrNull();
+
+  Future<Task?> taskByUid(String uid) =>
+      (select(tasks)..where((t) => t.uid.equals(uid))).getSingleOrNull();
+
+  /// Writes a project from the cloud. Local unsent changes that are newer
+  /// win. [row] has no meaningful id.
+  Future<void> applyRemoteProject(Project row, {required bool deleted}) async {
+    final local = await projectByUid(row.uid);
+    if (local != null && local.dirty && local.updatedAt > row.updatedAt) return;
+    if (deleted) {
+      if (local != null) {
+        await (update(tasks)..where((t) => t.projectId.equals(local.id))).write(
+          const TasksCompanion(projectId: Value(null)),
+        );
+        await (delete(projects)..where((p) => p.id.equals(local.id))).go();
+      }
+      return;
+    }
+    final companion = row
+        .toCompanion(false)
+        .copyWith(dirty: const Value(false));
+    if (local == null) {
+      await into(projects).insert(companion.copyWith(id: const Value.absent()));
+    } else {
+      await (update(projects)..where((p) => p.id.equals(local.id))).write(
+        companion.copyWith(id: const Value.absent()),
+      );
+    }
+  }
+
+  /// Writes a task from the cloud. [row.projectId] must already be local.
+  /// Returns the local task id, or null if it was skipped or deleted.
+  Future<int?> applyRemoteTask(Task row, {required bool deleted}) async {
+    final local = await taskByUid(row.uid);
+    if (local != null && local.dirty && local.updatedAt > row.updatedAt) {
+      return null;
+    }
+    if (deleted) {
+      if (local != null) {
+        await (delete(tasks)..where((t) => t.id.equals(local.id))).go();
+      }
+      return null;
+    }
+    final companion = row
+        .toCompanion(false)
+        .copyWith(dirty: const Value(false));
+    if (local == null) {
+      return into(tasks).insert(companion.copyWith(id: const Value.absent()));
+    }
+    await (update(tasks)..where((t) => t.id.equals(local.id))).write(
+      companion.copyWith(id: const Value.absent()),
+    );
+    return local.id;
   }
 
   // ---------- Ledger ----------
@@ -230,12 +403,31 @@ class AppDatabase extends _$AppDatabase {
     required List<LedgerEntry> ledgerRows,
   }) {
     return transaction(() async {
+      // Rows not in the backup are deleted in the cloud too.
+      final keep = {
+        ...projectRows.map((p) => 'project:${p.uid}'),
+        ...taskRows.map((t) => 'task:${t.uid}'),
+      };
+      for (final p in await select(projects).get()) {
+        if (!keep.contains('project:${p.uid}')) {
+          await _tombstone('project', p.uid);
+        }
+      }
+      for (final t in await select(tasks).get()) {
+        if (!keep.contains('task:${t.uid}')) await _tombstone('task', t.uid);
+      }
       await delete(tasks).go();
       await delete(projects).go();
       await delete(ledgerEntries).go();
       await batch((b) {
-        b.insertAll(projects, projectRows);
-        b.insertAll(tasks, taskRows);
+        b.insertAll(
+          projects,
+          projectRows.map((p) => p.copyWith(updatedAt: nowMs(), dirty: true)),
+        );
+        b.insertAll(
+          tasks,
+          taskRows.map((t) => t.copyWith(updatedAt: nowMs(), dirty: true)),
+        );
         b.insertAll(ledgerEntries, ledgerRows);
       });
     });

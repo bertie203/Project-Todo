@@ -99,6 +99,9 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
           recurrence: Recurrence.none,
           done: false,
           createdAt: DateTime.now(),
+          uid: '',
+          updatedAt: 0,
+          dirty: true,
         );
     // Keep the monthly repeat day unless the date or recurrence changed.
     final keepDay =

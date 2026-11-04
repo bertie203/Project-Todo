@@ -1,8 +1,9 @@
 import 'dart:convert';
 
 import '../data/database.dart';
+import '../logic/uid.dart';
 
-const backupFormatVersion = 1;
+const backupFormatVersion = 2;
 
 String _date(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -24,6 +25,7 @@ Future<String> exportJson(AppDatabase db) async {
       for (final p in projects)
         {
           'id': p.id,
+          'uid': p.uid,
           'name': p.name,
           'archived': p.archived,
           'createdAt': p.createdAt.toIso8601String(),
@@ -33,6 +35,7 @@ Future<String> exportJson(AppDatabase db) async {
       for (final t in tasks)
         {
           'id': t.id,
+          'uid': t.uid,
           'projectId': t.projectId,
           'title': t.title,
           'notes': t.notes,
@@ -91,6 +94,9 @@ BackupData parseBackup(String json) {
           name: p['name'] as String,
           archived: p['archived'] as bool,
           createdAt: DateTime.parse(p['createdAt'] as String),
+          uid: p['uid'] as String? ?? newUid(),
+          updatedAt: nowMs(),
+          dirty: true,
         ),
     ];
     final tasks = [
@@ -113,6 +119,9 @@ BackupData parseBackup(String json) {
               ? null
               : DateTime.parse(t['doneAt'] as String),
           createdAt: DateTime.parse(t['createdAt'] as String),
+          uid: t['uid'] as String? ?? newUid(),
+          updatedAt: nowMs(),
+          dirty: true,
         ),
     ];
     final ledger = [

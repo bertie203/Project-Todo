@@ -3,12 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'data/database.dart';
 import 'logic/dates.dart';
 import 'services/alarms.dart';
+import 'services/sync.dart';
 import 'services/task_service.dart';
 
 /// Overridden in main() and in tests.
 final dbProvider = Provider<AppDatabase>((ref) => throw UnimplementedError());
 
 final alarmsProvider = Provider<AlarmScheduler>((ref) => NoopAlarms());
+
+/// Cloud sync. Overridden in main(); tests get one that is not connected.
+final syncProvider = Provider<SyncService>(
+  (ref) => SyncService(
+    ref.watch(dbProvider),
+    alarms: ref.watch(alarmsProvider),
+    store: MemorySyncStore(),
+  ),
+);
 
 final taskServiceProvider = Provider<TaskService>(
   (ref) => TaskService(ref.watch(dbProvider), ref.watch(alarmsProvider)),

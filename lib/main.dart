@@ -12,6 +12,7 @@ import 'app.dart';
 import 'data/database.dart';
 import 'providers.dart';
 import 'services/alarms.dart';
+import 'services/sync.dart';
 import 'services/task_service.dart';
 import 'ui/task_editor.dart';
 
@@ -33,16 +34,23 @@ Future<void> main() async {
   // Safety net after reboot or app update.
   await alarms.rescheduleAll(_db);
 
-  final flag = File(
-    '${(await getApplicationSupportDirectory()).path}/first_run_done',
-  );
+  final support = (await getApplicationSupportDirectory()).path;
+  final flag = File('$support/first_run_done');
   final firstRun = !await flag.exists();
+
+  final sync = SyncService(
+    _db,
+    alarms: alarms,
+    store: FileSyncStore(File('$support/sync.json')),
+  );
+  await sync.load();
 
   runApp(
     ProviderScope(
       overrides: [
         dbProvider.overrideWithValue(_db),
         alarmsProvider.overrideWithValue(alarms),
+        syncProvider.overrideWithValue(sync),
       ],
       child: ProjectTodoApp(
         firstRun: firstRun,
@@ -50,6 +58,8 @@ Future<void> main() async {
       ),
     ),
   );
+
+  sync.start();
 
   if (firstRun) {
     WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../providers.dart';
 import '../services/backup.dart';
 import '../services/permissions.dart';
+import 'sync_section.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -119,6 +120,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          const _Header('Cloud sync'),
+          const SyncSection(),
           const _Header('Backup'),
           ListTile(
             leading: const Icon(Icons.upload_file),

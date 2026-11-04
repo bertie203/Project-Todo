@@ -47,6 +47,9 @@ Task draft(
   recurrence: r,
   done: false,
   createdAt: DateTime(2026, 10, 1),
+  uid: '',
+  updatedAt: 0,
+  dirty: true,
 );
 
 void main() {
