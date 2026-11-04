@@ -106,3 +106,10 @@ export function prettyDate(s: string): string {
   const { m, d } = parseDate(s);
   return `${DAY_NAMES[weekday(s)]} ${d} ${MONTH_NAMES[m]}`;
 }
+
+/** Whole days from a to b (b - a). */
+export function daysBetween(a: string, b: string): number {
+  const pa = parseDate(a);
+  const pb = parseDate(b);
+  return Math.round((Date.UTC(pb.y, pb.m - 1, pb.d) - Date.UTC(pa.y, pa.m - 1, pa.d)) / 86_400_000);
+}

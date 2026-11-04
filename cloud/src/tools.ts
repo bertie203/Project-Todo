@@ -1,4 +1,4 @@
-import { addDays, formatMinutes, localNow, parseDate, parseTime, prettyDate, type Recurrence } from './dates';
+import { addDays, daysBetween, formatMinutes, localNow, parseDate, parseTime, prettyDate, type Recurrence } from './dates';
 import { Store, type Priority, type ProjectRow, type TaskRow } from './db';
 
 export interface Tool {
@@ -65,11 +65,6 @@ function line(t: TaskRow, names: Map<string, string>, showDate = false): string 
   return `${box} [${shortId(t.uid)}] ${t.title} (${bits.join(' · ')})${notes}`;
 }
 
-function section(title: string, list: TaskRow[], names: Map<string, string>, showDate = false): string {
-  if (list.length === 0) return '';
-  return `## ${title} (${list.length})\n${list.map((t) => line(t, names, showDate)).join('\n')}\n`;
-}
-
 // ---------- Lookups ----------
 
 async function findTask(store: Store, id: string): Promise<TaskRow> {
@@ -127,40 +122,77 @@ async function applyFields(store: Store, base: TaskRow, args: Record<string, any
 
 export const tools: Tool[] = [
   {
-    name: 'todays_plan',
+    name: 'day_plan',
     readOnly: true,
     description:
-      "The user's plan for today: late tasks (not done on their day), tasks due today, what is already done today, and the next 7 days. Call this first when the user asks what they are doing today, wants to plan their day, or says something like \"let's get cracking\".",
-    inputSchema: { type: 'object', properties: {} },
-    async run(_args, { store, timeZone, now }) {
+      'Everything needed to plan one day: tasks at fixed times, tasks for any time that day, open tasks from earlier days that will carry over, work per project, and a summary of the following week. ' +
+      'Call this whenever the user asks about a single day ("what are we doing today", "what\'s on tomorrow", "plan Friday", "let\'s get cracking"), then present a plan as the server instructions describe rather than repeating the list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'YYYY-MM-DD. Defaults to today in the user\'s time zone.' },
+      },
+    },
+    async run(args, { store, timeZone, now }) {
       const { date: today, minutes } = localNow(timeZone, now);
-      const weekEnd = addDays(today, 8);
+      const day = args.date ? (parseDate(args.date), String(args.date)) : today;
+      const isToday = day === today;
+      const rel = isToday ? 'today' : day === addDays(today, 1) ? 'tomorrow' : day < today ? 'in the past' : `in ${daysBetween(today, day)} days`;
       const names = await projectNames(store);
-      const late = await store.tasks('t.done = 0 AND t.due_date < ?', [today]);
-      const due = await store.tasks('t.done = 0 AND t.due_date = ?', [today]);
+
+      const onDay = sortTasks(await store.tasks('t.done = 0 AND t.due_date = ?', [day]));
+      const fixed = onDay.filter((t) => t.due_time != null).sort((a, b) => a.due_time! - b.due_time!);
+      const anyTime = onDay.filter((t) => t.due_time == null);
+      const carried = (await store.tasks('t.done = 0 AND t.due_date < ?', [day])).sort(
+        (a, b) => prioRank[a.priority] - prioRank[b.priority] || a.due_date!.localeCompare(b.due_date!),
+      );
       // Local midnight as epoch ms (the extra minute covers the seconds).
       const startOfDay = (now ?? new Date()).getTime() - minutes * 60_000 - 60_000;
-      const doneToday = await store.tasks('t.done = 1 AND t.done_at >= ?', [startOfDay]);
-      const upcoming = await store.tasks('t.done = 0 AND t.due_date > ? AND t.due_date < ?', [today, weekEnd]);
+      const done = isToday ? sortTasks(await store.tasks('t.done = 1 AND t.done_at >= ?', [startOfDay])) : [];
+      const after = await store.tasks('t.done = 0 AND t.due_date > ? AND t.due_date <= ?', [day, addDays(day, 7)]);
       const undated = await store.tasks('t.done = 0 AND t.due_date IS NULL');
 
-      const lateSorted = [...late].sort((a, b) => (b.due_date! < a.due_date! ? -1 : 1));
-      const byDay = new Map<string, TaskRow[]>();
-      for (const t of upcoming) byDay.set(t.due_date!, [...(byDay.get(t.due_date!) ?? []), t]);
-      const upcomingText = [...byDay.keys()]
-        .sort()
-        .map((d) => `### ${prettyDate(d)}\n${sortTasks(byDay.get(d)!).map((t) => line(t, names)).join('\n')}`)
-        .join('\n');
+      const lateNote = (t: TaskRow) => {
+        const n = daysBetween(t.due_date!, today);
+        return n > 0 ? `due ${prettyDate(t.due_date!)}, ${n} day${n === 1 ? '' : 's'} late` : `due ${prettyDate(t.due_date!)}`;
+      };
+      const fixedLines = fixed.map((t) => {
+        const passed = isToday && t.due_time! < minutes ? ' (time has passed)' : '';
+        return `- ${formatMinutes(t.due_time!)}${passed} ${line(t, names)}`;
+      });
+      const perProject = new Map<string, number>();
+      for (const t of [...fixed, ...anyTime, ...carried]) {
+        const p = (t.project_uid && names.get(t.project_uid)) || 'No project';
+        perProject.set(p, (perProject.get(p) ?? 0) + 1);
+      }
+      const week = new Map<string, TaskRow[]>();
+      for (const t of after) week.set(t.due_date!, [...(week.get(t.due_date!) ?? []), t]);
+      const weekLines = [...week.keys()].sort().map((d) => {
+        const list = week.get(d)!;
+        const red = list.filter((t) => t.priority === 'red').length;
+        const timed = list.filter((t) => t.due_time != null).map((t) => formatMinutes(t.due_time!));
+        return `- ${prettyDate(d)}: ${list.length} task${list.length === 1 ? '' : 's'}${red ? `, ${red} red` : ''}${timed.length ? `, fixed at ${timed.join(', ')}` : ''}`;
+      });
 
-      return [
-        `Today is ${prettyDate(today)} (${today}), local time ${formatMinutes(minutes)}, time zone ${timeZone}.`,
+      const out = [
+        `Plan for ${prettyDate(day)} (${day}, ${rel}). Now: ${prettyDate(today)} ${formatMinutes(minutes)}, ${timeZone}.`,
         '',
-        section('Late: not done on their day', lateSorted, names, true) || 'Nothing late.\n',
-        section('Due today', sortTasks(due), names) || 'Nothing else due today.\n',
-        section('Done today', sortTasks(doneToday), names),
-        upcoming.length ? `## Next 7 days (${upcoming.length})\n${upcomingText}\n` : 'Nothing due in the next 7 days.\n',
-        undated.length ? `Also ${undated.length} undated open task(s); use list_tasks with undated=true to see them.` : '',
-      ].join('\n');
+        `## Fixed times (${fixed.length})`,
+        fixedLines.join('\n') || 'None.',
+        '',
+        `## Any time that day (${anyTime.length}), most urgent first`,
+        anyTime.map((t) => `- ${line(t, names)}`).join('\n') || 'None.',
+        '',
+        `## ${isToday ? 'Late: not done on their day' : 'Still open from earlier days (will carry over unless done first)'} (${carried.length})`,
+        carried.map((t) => `- ${line(t, names)} — ${lateNote(t)}`).join('\n') || 'None.',
+        '',
+        `## Work by project`,
+        [...perProject.entries()].sort((a, b) => b[1] - a[1]).map(([p, n]) => `- ${p}: ${n}`).join('\n') || 'Nothing open.',
+      ];
+      if (isToday && done.length) out.push('', `## Already done today (${done.length})`, done.map((t) => `- ${line(t, names)}`).join('\n'));
+      out.push('', `## The 7 days after`, weekLines.join('\n') || 'Nothing due.');
+      if (undated.length) out.push('', `${undated.length} open task(s) have no date; list_tasks with undated=true shows them.`);
+      return out.join('\n');
     },
   },
   {
