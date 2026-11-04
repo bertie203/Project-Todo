@@ -30,8 +30,8 @@ Every push to `main` runs `.github/workflows/release.yml`. It tests, builds a si
 Generate the keystore once, on your own computer:
 
 ```sh
-keytool -genkeypair -v -keystore release.jks -alias projecttodo \
-  -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkeypair -v -keystore release.jks -storetype PKCS12 -alias projecttodo \
+  -keyalg EC -groupname secp256r1 -validity 10000
 base64 -w0 release.jks > release.jks.b64
 ```
 
@@ -43,6 +43,8 @@ Add four repository secrets (Settings → Secrets and variables → Actions):
 | `KEYSTORE_PASSWORD` | keystore password |
 | `KEY_ALIAS` | `projecttodo` |
 | `KEY_PASSWORD` | key password |
+
+An EC key keeps `KEYSTORE_BASE64` under 2,000 characters, which some phones cannot paste past. With a PKCS12 keystore, `KEY_PASSWORD` equals `KEYSTORE_PASSWORD`.
 
 Keep a copy of `release.jks` and the passwords outside GitHub. Do not commit it. If it is lost, new builds cannot install over the old app.
 
