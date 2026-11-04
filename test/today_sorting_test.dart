@@ -121,4 +121,19 @@ void main() {
     expect(titles(s.open), ['missed red', 'missed green']);
     expect(titles(s.done), ['done']);
   });
+
+  test('late tasks grouped by day, most recent first', () {
+    final twoDaysAgo = DateTime(2026, 10, 29);
+    final groups = groupLateTasks([
+      t('old green', due: twoDaysAgo),
+      t('old red', p: Priority.red, due: twoDaysAgo),
+      t('yesterday', due: yesterday),
+      t('done late', due: yesterday, done: true, doneAt: today),
+      t('today', due: today),
+      t('undated'),
+    ], now);
+    expect(groups.map((g) => g.day), [yesterday, twoDaysAgo]);
+    expect(titles(groups[0].tasks), ['yesterday']);
+    expect(titles(groups[1].tasks), ['old red', 'old green']);
+  });
 }

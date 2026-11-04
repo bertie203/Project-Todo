@@ -32,6 +32,11 @@ final todayTasksProvider = StreamProvider<List<TaskWithProject>>(
   (ref) => ref.watch(dbProvider).watchTodayTasks(ref.watch(dayProvider)),
 );
 
+/// Undone tasks whose due day has passed.
+final lateTasksProvider = StreamProvider<List<TaskWithProject>>(
+  (ref) => ref.watch(dbProvider).watchLateTasks(ref.watch(dayProvider)),
+);
+
 /// Tasks due on one day (local midnight). Used by the Today tab when
 /// swiped to a day other than today.
 final dayTasksProvider = StreamProvider.family<List<TaskWithProject>, DateTime>(

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'providers.dart';
 import 'ui/calendar_screen.dart';
 import 'ui/first_run_screen.dart';
+import 'ui/late_screen.dart';
 import 'ui/ledger_screen.dart';
 import 'ui/projects_screen.dart';
 import 'ui/today_screen.dart';
@@ -100,11 +101,13 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   @override
   Widget build(BuildContext context) {
+    final late = ref.watch(lateTasksProvider).value?.length ?? 0;
     return Scaffold(
       body: IndexedStack(
         index: _tab,
         children: const [
           TodayScreen(),
+          LateScreen(),
           CalendarScreen(),
           ProjectsScreen(),
           LedgerScreen(),
@@ -113,9 +116,17 @@ class _HomeShellState extends ConsumerState<HomeShell>
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.today), label: 'Today'),
+        destinations: [
+          const NavigationDestination(icon: Icon(Icons.today), label: 'Today'),
           NavigationDestination(
+            icon: Badge(
+              isLabelVisible: late > 0,
+              label: Text('$late'),
+              child: const Icon(Icons.history),
+            ),
+            label: 'Late',
+          ),
+          const NavigationDestination(
             icon: Icon(Icons.calendar_month),
             label: 'Calendar',
           ),

@@ -112,6 +112,16 @@ class AppDatabase extends _$AppDatabase {
     return q.watch().map(_mapJoined);
   }
 
+  /// Undone tasks due before [today]. Used by the Late tab.
+  Stream<List<TaskWithProject>> watchLateTasks(DateTime today) {
+    final q = _visibleTasks()
+      ..where(
+        tasks.done.equals(false) &
+            tasks.dueDate.isSmallerThanValue(dateOnly(today)),
+      );
+    return q.watch().map(_mapJoined);
+  }
+
   /// Dated tasks with due date in [from, to). Used by the Calendar tab.
   Stream<List<TaskWithProject>> watchTasksBetween(DateTime from, DateTime to) {
     final q = _visibleTasks()

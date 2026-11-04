@@ -81,3 +81,30 @@ DaySections buildDaySections(List<TaskWithProject> rows, DateTime day) {
   done.sort(cmp);
   return DaySections(open, done);
 }
+
+/// Late tasks for one past day.
+class LateDay {
+  LateDay(this.day, this.tasks);
+  final DateTime day;
+  final List<TaskWithProject> tasks;
+}
+
+/// Groups undone past tasks by due day, most recent day first.
+/// Within a day: priority, then time.
+List<LateDay> groupLateTasks(List<TaskWithProject> rows, DateTime now) {
+  final today = dateOnly(now);
+  final byDay = <DateTime, List<TaskWithProject>>{};
+  for (final r in rows) {
+    final due = r.task.dueDate;
+    if (r.task.done || due == null || !dateOnly(due).isBefore(today)) continue;
+    byDay.putIfAbsent(dateOnly(due), () => []).add(r);
+  }
+  final days = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
+  return [
+    for (final d in days)
+      LateDay(
+        d,
+        byDay[d]!..sort((a, b) => compareByPriorityThenTime(a.task, b.task)),
+      ),
+  ];
+}

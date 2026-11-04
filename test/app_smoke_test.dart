@@ -153,6 +153,32 @@ void main() {
   );
 
   testWidgets(
+    'late tab lists tasks not done on their day',
+    timeout: const Timeout(Duration(seconds: 60)),
+    (tester) async {
+      final now = DateTime.now();
+      await tester.runAsync(() async {
+        await db.insertTask(
+          TasksCompanion.insert(
+            title: 'Pay invoice',
+            dueDate: Value(DateTime(now.year, now.month, now.day - 3)),
+          ),
+        );
+      });
+      await pumpApp(tester);
+      // Badge on the Late tab.
+      expect(find.text('1'), findsOneWidget);
+
+      await tester.tap(find.text('Late'));
+      await settle(tester);
+      expect(find.text('1 task not done'), findsOneWidget);
+      expect(find.textContaining('3 days ago'), findsOneWidget);
+      expect(find.text('Pay invoice'), findsWidgets);
+      await closeDb(tester);
+    },
+  );
+
+  testWidgets(
     'today tab swipes to yesterday and tomorrow',
     timeout: const Timeout(Duration(seconds: 60)),
     (tester) async {

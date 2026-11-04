@@ -200,6 +200,17 @@ void main() {
       );
     });
 
+    test('late query returns only undone past tasks', () async {
+      await service.create(draft('missed', due: DateTime(2026, 10, 30)));
+      final d = await service.create(
+        draft('caught up', due: DateTime(2026, 10, 29)),
+      );
+      await service.complete(d);
+      await service.create(draft('today', due: DateTime(2026, 10, 31)));
+      await service.create(draft('undated'));
+      final rows = await db.watchLateTasks(now).first;
+      expect(rows.map((r) => r.task.title), ['missed']);
+    });
     test('archived project tasks are hidden', () async {
       final p = await db.insertProject('Old');
       await service.create(
