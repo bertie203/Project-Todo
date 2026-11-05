@@ -106,17 +106,18 @@ class _TaskCardState extends ConsumerState<TaskCard> {
                       if (task.alarm) Icon(Icons.alarm, size: 16, color: muted),
                       if (task.recurrence != Recurrence.none)
                         Icon(Icons.repeat, size: 16, color: muted),
-                      Icon(
-                        _expanded ? Icons.expand_less : Icons.expand_more,
-                        size: 18,
-                        color: muted,
-                      ),
                     ],
                   ),
                 ],
               ),
             ),
           ),
+          // Only tasks with steps show the arrow; all cards still open on tap.
+          if (steps.isNotEmpty)
+            Icon(
+              _expanded ? Icons.expand_less : Icons.expand_more,
+              color: Colors.green,
+            ),
           if (!task.done)
             IconButton(
               tooltip: 'Reschedule',
