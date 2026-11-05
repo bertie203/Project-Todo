@@ -584,6 +584,16 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<List<Subtask>, String> subtasks =
+      GeneratedColumn<String>(
+        'subtasks',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      ).withConverter<List<Subtask>>($TasksTable.$convertersubtasks);
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -645,6 +655,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     recurrenceDay,
     done,
     doneAt,
+    subtasks,
     createdAt,
     uid,
     updatedAt,
@@ -809,6 +820,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}done_at'],
       ),
+      subtasks: $TasksTable.$convertersubtasks.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}subtasks'],
+        )!,
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -837,6 +854,8 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
       const EnumIndexConverter<Priority>(Priority.values);
   static JsonTypeConverter2<Recurrence, int, int> $converterrecurrence =
       const EnumIndexConverter<Recurrence>(Recurrence.values);
+  static TypeConverter<List<Subtask>, String> $convertersubtasks =
+      const SubtasksConverter();
 }
 
 class Task extends DataClass implements Insertable<Task> {
@@ -859,6 +878,9 @@ class Task extends DataClass implements Insertable<Task> {
   final int? recurrenceDay;
   final bool done;
   final DateTime? doneAt;
+
+  /// Ordered steps, stored as JSON.
+  final List<Subtask> subtasks;
   final DateTime createdAt;
   final String uid;
   final int updatedAt;
@@ -876,6 +898,7 @@ class Task extends DataClass implements Insertable<Task> {
     this.recurrenceDay,
     required this.done,
     this.doneAt,
+    required this.subtasks,
     required this.createdAt,
     required this.uid,
     required this.updatedAt,
@@ -914,6 +937,11 @@ class Task extends DataClass implements Insertable<Task> {
     if (!nullToAbsent || doneAt != null) {
       map['done_at'] = Variable<DateTime>(doneAt);
     }
+    {
+      map['subtasks'] = Variable<String>(
+        $TasksTable.$convertersubtasks.toSql(subtasks),
+      );
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['uid'] = Variable<String>(uid);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -945,6 +973,7 @@ class Task extends DataClass implements Insertable<Task> {
       doneAt: doneAt == null && nullToAbsent
           ? const Value.absent()
           : Value(doneAt),
+      subtasks: Value(subtasks),
       createdAt: Value(createdAt),
       uid: Value(uid),
       updatedAt: Value(updatedAt),
@@ -974,6 +1003,7 @@ class Task extends DataClass implements Insertable<Task> {
       recurrenceDay: serializer.fromJson<int?>(json['recurrenceDay']),
       done: serializer.fromJson<bool>(json['done']),
       doneAt: serializer.fromJson<DateTime?>(json['doneAt']),
+      subtasks: serializer.fromJson<List<Subtask>>(json['subtasks']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       uid: serializer.fromJson<String>(json['uid']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
@@ -1000,6 +1030,7 @@ class Task extends DataClass implements Insertable<Task> {
       'recurrenceDay': serializer.toJson<int?>(recurrenceDay),
       'done': serializer.toJson<bool>(done),
       'doneAt': serializer.toJson<DateTime?>(doneAt),
+      'subtasks': serializer.toJson<List<Subtask>>(subtasks),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'uid': serializer.toJson<String>(uid),
       'updatedAt': serializer.toJson<int>(updatedAt),
@@ -1020,6 +1051,7 @@ class Task extends DataClass implements Insertable<Task> {
     Value<int?> recurrenceDay = const Value.absent(),
     bool? done,
     Value<DateTime?> doneAt = const Value.absent(),
+    List<Subtask>? subtasks,
     DateTime? createdAt,
     String? uid,
     int? updatedAt,
@@ -1039,6 +1071,7 @@ class Task extends DataClass implements Insertable<Task> {
         : this.recurrenceDay,
     done: done ?? this.done,
     doneAt: doneAt.present ? doneAt.value : this.doneAt,
+    subtasks: subtasks ?? this.subtasks,
     createdAt: createdAt ?? this.createdAt,
     uid: uid ?? this.uid,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -1062,6 +1095,7 @@ class Task extends DataClass implements Insertable<Task> {
           : this.recurrenceDay,
       done: data.done.present ? data.done.value : this.done,
       doneAt: data.doneAt.present ? data.doneAt.value : this.doneAt,
+      subtasks: data.subtasks.present ? data.subtasks.value : this.subtasks,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       uid: data.uid.present ? data.uid.value : this.uid,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -1084,6 +1118,7 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('recurrenceDay: $recurrenceDay, ')
           ..write('done: $done, ')
           ..write('doneAt: $doneAt, ')
+          ..write('subtasks: $subtasks, ')
           ..write('createdAt: $createdAt, ')
           ..write('uid: $uid, ')
           ..write('updatedAt: $updatedAt, ')
@@ -1106,6 +1141,7 @@ class Task extends DataClass implements Insertable<Task> {
     recurrenceDay,
     done,
     doneAt,
+    subtasks,
     createdAt,
     uid,
     updatedAt,
@@ -1127,6 +1163,7 @@ class Task extends DataClass implements Insertable<Task> {
           other.recurrenceDay == this.recurrenceDay &&
           other.done == this.done &&
           other.doneAt == this.doneAt &&
+          other.subtasks == this.subtasks &&
           other.createdAt == this.createdAt &&
           other.uid == this.uid &&
           other.updatedAt == this.updatedAt &&
@@ -1146,6 +1183,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<int?> recurrenceDay;
   final Value<bool> done;
   final Value<DateTime?> doneAt;
+  final Value<List<Subtask>> subtasks;
   final Value<DateTime> createdAt;
   final Value<String> uid;
   final Value<int> updatedAt;
@@ -1163,6 +1201,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.recurrenceDay = const Value.absent(),
     this.done = const Value.absent(),
     this.doneAt = const Value.absent(),
+    this.subtasks = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.uid = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1181,6 +1220,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.recurrenceDay = const Value.absent(),
     this.done = const Value.absent(),
     this.doneAt = const Value.absent(),
+    this.subtasks = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.uid = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1199,6 +1239,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<int>? recurrenceDay,
     Expression<bool>? done,
     Expression<DateTime>? doneAt,
+    Expression<String>? subtasks,
     Expression<DateTime>? createdAt,
     Expression<String>? uid,
     Expression<int>? updatedAt,
@@ -1217,6 +1258,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (recurrenceDay != null) 'recurrence_day': recurrenceDay,
       if (done != null) 'done': done,
       if (doneAt != null) 'done_at': doneAt,
+      if (subtasks != null) 'subtasks': subtasks,
       if (createdAt != null) 'created_at': createdAt,
       if (uid != null) 'uid': uid,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1237,6 +1279,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<int?>? recurrenceDay,
     Value<bool>? done,
     Value<DateTime?>? doneAt,
+    Value<List<Subtask>>? subtasks,
     Value<DateTime>? createdAt,
     Value<String>? uid,
     Value<int>? updatedAt,
@@ -1255,6 +1298,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       recurrenceDay: recurrenceDay ?? this.recurrenceDay,
       done: done ?? this.done,
       doneAt: doneAt ?? this.doneAt,
+      subtasks: subtasks ?? this.subtasks,
       createdAt: createdAt ?? this.createdAt,
       uid: uid ?? this.uid,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1305,6 +1349,11 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (doneAt.present) {
       map['done_at'] = Variable<DateTime>(doneAt.value);
     }
+    if (subtasks.present) {
+      map['subtasks'] = Variable<String>(
+        $TasksTable.$convertersubtasks.toSql(subtasks.value),
+      );
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1335,6 +1384,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('recurrenceDay: $recurrenceDay, ')
           ..write('done: $done, ')
           ..write('doneAt: $doneAt, ')
+          ..write('subtasks: $subtasks, ')
           ..write('createdAt: $createdAt, ')
           ..write('uid: $uid, ')
           ..write('updatedAt: $updatedAt, ')
@@ -2377,6 +2427,7 @@ typedef $$TasksTableCreateCompanionBuilder = TasksCompanion Function({
   Value<int?> recurrenceDay,
   Value<bool> done,
   Value<DateTime?> doneAt,
+  Value<List<Subtask>> subtasks,
   Value<DateTime> createdAt,
   Value<String> uid,
   Value<int> updatedAt,
@@ -2395,6 +2446,7 @@ typedef $$TasksTableUpdateCompanionBuilder = TasksCompanion Function({
   Value<int?> recurrenceDay,
   Value<bool> done,
   Value<DateTime?> doneAt,
+  Value<List<Subtask>> subtasks,
   Value<DateTime> createdAt,
   Value<String> uid,
   Value<int> updatedAt,
@@ -2486,6 +2538,12 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
   ColumnFilters<DateTime> get doneAt => $composableBuilder(
     column: $table.doneAt,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<List<Subtask>, List<Subtask>, String>
+  get subtasks => $composableBuilder(
+    column: $table.subtasks,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
@@ -2596,6 +2654,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get subtasks => $composableBuilder(
+    column: $table.subtasks,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -2687,6 +2750,9 @@ class $$TasksTableAnnotationComposer
   GeneratedColumn<DateTime> get doneAt =>
       $composableBuilder(column: $table.doneAt, builder: (column) => column);
 
+  GeneratedColumnWithTypeConverter<List<Subtask>, String> get subtasks =>
+      $composableBuilder(column: $table.subtasks, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -2763,6 +2829,7 @@ class $$TasksTableTableManager
                 Value<int?> recurrenceDay = const Value.absent(),
                 Value<bool> done = const Value.absent(),
                 Value<DateTime?> doneAt = const Value.absent(),
+                Value<List<Subtask>> subtasks = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String> uid = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
@@ -2780,6 +2847,7 @@ class $$TasksTableTableManager
                 recurrenceDay: recurrenceDay,
                 done: done,
                 doneAt: doneAt,
+                subtasks: subtasks,
                 createdAt: createdAt,
                 uid: uid,
                 updatedAt: updatedAt,
@@ -2799,6 +2867,7 @@ class $$TasksTableTableManager
                 Value<int?> recurrenceDay = const Value.absent(),
                 Value<bool> done = const Value.absent(),
                 Value<DateTime?> doneAt = const Value.absent(),
+                Value<List<Subtask>> subtasks = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String> uid = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
@@ -2816,6 +2885,7 @@ class $$TasksTableTableManager
                 recurrenceDay: recurrenceDay,
                 done: done,
                 doneAt: doneAt,
+                subtasks: subtasks,
                 createdAt: createdAt,
                 uid: uid,
                 updatedAt: updatedAt,

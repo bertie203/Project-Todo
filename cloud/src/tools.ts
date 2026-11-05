@@ -1,5 +1,5 @@
 import { addDays, daysBetween, formatMinutes, localNow, parseDate, parseTime, prettyDate, type Recurrence } from './dates';
-import { Store, type Priority, type ProjectRow, type TaskRow } from './db';
+import { parseSubtasks, Store, type Priority, type ProjectRow, type TaskRow } from './db';
 
 export interface Tool {
   name: string;
@@ -32,6 +32,16 @@ const taskFields = {
   alarm: { type: 'boolean', description: 'Ring an alarm on the phone at the due time. Needs a date and time.' },
   recurrence: { type: 'string', enum: RECURRENCES, description: 'Repeat. Needs a date.' },
   project: { type: ['string', 'null'], description: 'Project name (partial match is fine). null = no project.' },
+  subtasks: {
+    type: 'array',
+    description:
+      'Ordered steps (subtasks). Replaces the whole list, so include existing steps you want to keep, with their done state. [] removes all.',
+    items: {
+      type: 'object',
+      properties: { title: { type: 'string' }, done: { type: 'boolean' } },
+      required: ['title'],
+    },
+  },
 };
 
 // ---------- Formatting ----------
@@ -60,9 +70,12 @@ function line(t: TaskRow, names: Map<string, string>, showDate = false): string 
   if (t.project_uid && names.has(t.project_uid)) bits.push(`project: ${names.get(t.project_uid)}`);
   if (t.alarm) bits.push('alarm');
   if (t.recurrence !== 'none') bits.push(`repeats ${t.recurrence}`);
+  const steps = parseSubtasks(t.subtasks);
+  if (steps.length) bits.push(`steps ${steps.filter((s) => s.done).length}/${steps.length}`);
   const box = t.done ? '[x]' : '[ ]';
   const notes = t.notes ? `\n    notes: ${t.notes.replace(/\n/g, ' ')}` : '';
-  return `${box} [${shortId(t.uid)}] ${t.title} (${bits.join(' · ')})${notes}`;
+  const stepLines = steps.map((s, i) => `\n    ${i + 1}. ${s.done ? '[x]' : '[ ]'} ${s.title}`).join('');
+  return `${box} [${shortId(t.uid)}] ${t.title} (${bits.join(' · ')})${notes}${stepLines}`;
 }
 
 // ---------- Lookups ----------
@@ -95,6 +108,10 @@ async function applyFields(store: Store, base: TaskRow, args: Record<string, any
     t.title = String(args.title).trim();
   }
   if (args.notes !== undefined) t.notes = String(args.notes);
+  if (args.subtasks !== undefined) {
+    if (!Array.isArray(args.subtasks)) throw new Error('subtasks must be a list.');
+    t.subtasks = JSON.stringify(parseSubtasks(args.subtasks));
+  }
   if (args.priority !== undefined) {
     if (!PRIORITIES.includes(args.priority)) throw new Error('priority must be red, orange or green.');
     t.priority = args.priority as Priority;
@@ -235,7 +252,7 @@ export const tools: Tool[] = [
       if (!args.title || !String(args.title).trim()) throw new Error('A title is needed.');
       const draft = await applyFields(store, {
         title: '', notes: '', priority: 'green', due_date: null, due_time: null, alarm: 0,
-        recurrence: 'none', recurrence_day: null, project_uid: null,
+        recurrence: 'none', recurrence_day: null, project_uid: null, subtasks: '[]',
       } as TaskRow, args);
       const { uid: _u, rev: _r, updated_at: _a, created_at: _c, ...fields } = draft;
       const t = await store.createTask(fields);
@@ -263,6 +280,34 @@ export const tools: Tool[] = [
       const next = await store.completeTask(t, localNow(timeZone, now).date);
       const names = await projectNames(store);
       return next ? `Done: ${t.title}. Next occurrence: ${line(next, names, true)}` : `Done: ${t.title}`;
+    },
+  },
+  {
+    name: 'tick_subtask',
+    description:
+      'Marks one step (subtask) of a task done, or not done. Steps are numbered from 1 in the order shown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: idProp,
+        step: { type: 'integer', minimum: 1, description: 'Step number, starting at 1.' },
+        done: { type: 'boolean', description: 'Default true. false unticks the step.' },
+      },
+      required: ['id', 'step'],
+    },
+    async run(args, { store }) {
+      const t = await findTask(store, args.id);
+      const steps = parseSubtasks(t.subtasks);
+      const n = Number(args.step);
+      if (!Number.isInteger(n) || n < 1 || n > steps.length) {
+        throw new Error(steps.length ? `Step must be 1 to ${steps.length}.` : `"${t.title}" has no steps.`);
+      }
+      const done = args.done !== false;
+      steps[n - 1] = { ...steps[n - 1], done };
+      const saved = await store.saveTask({ ...t, subtasks: JSON.stringify(steps) });
+      const left = steps.filter((s) => !s.done).length;
+      const summary = left ? `${left} step(s) left.` : 'All steps done; ask whether to complete the task.';
+      return `${done ? 'Ticked' : 'Unticked'} step ${n} of "${t.title}". ${summary}\n${line(saved, await projectNames(store))}`;
     },
   },
   {

@@ -52,6 +52,9 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
   TimeOfDay? _time;
   late bool _alarm;
   late Recurrence _recurrence;
+  final List<_Step> _steps = [];
+  final _newStep = TextEditingController();
+  final _newStepFocus = FocusNode();
 
   bool get _isNew => widget.existing == null;
 
@@ -69,12 +72,20 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
         : TimeOfDay(hour: t!.dueTime! ~/ 60, minute: t.dueTime! % 60);
     _alarm = t?.alarm ?? false;
     _recurrence = t?.recurrence ?? Recurrence.none;
+    for (final s in t?.subtasks ?? const <Subtask>[]) {
+      _steps.add(_Step(s.title, s.done));
+    }
   }
 
   @override
   void dispose() {
     _title.dispose();
     _notes.dispose();
+    _newStep.dispose();
+    _newStepFocus.dispose();
+    for (final s in _steps) {
+      s.controller.dispose();
+    }
     super.dispose();
   }
 
@@ -102,6 +113,7 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
           uid: '',
           updatedAt: 0,
           dirty: true,
+          subtasks: const [],
         );
     // Keep the monthly repeat day unless the date or recurrence changed.
     final keepDay =
@@ -120,6 +132,12 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
       alarm: _alarm && _date != null && minutes != null,
       recurrence: _date == null ? Recurrence.none : _recurrence,
       recurrenceDay: Value(keepDay ? old.recurrenceDay : null),
+      subtasks: [
+        for (final s in _steps)
+          if (s.controller.text.trim().isNotEmpty)
+            Subtask(s.controller.text.trim(), done: s.done),
+        if (_newStep.text.trim().isNotEmpty) Subtask(_newStep.text.trim()),
+      ],
     );
     if (_isNew) {
       await service.create(task);
@@ -205,6 +223,12 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
             maxLines: 6,
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(labelText: 'Notes'),
+          ),
+          const SizedBox(height: 20),
+          _SubtasksEditor(
+            steps: _steps,
+            newStep: _newStep,
+            focus: _newStepFocus,
           ),
           const SizedBox(height: 20),
           Row(
@@ -295,6 +319,142 @@ class _TaskEditorState extends ConsumerState<TaskEditor> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One editable step in the task editor.
+class _Step {
+  _Step(String title, this.done)
+    : controller = TextEditingController(text: title);
+  final Key key = UniqueKey();
+  final TextEditingController controller;
+  bool done;
+}
+
+/// Subtasks part of the editor. Edits [steps] in place.
+class _SubtasksEditor extends StatefulWidget {
+  const _SubtasksEditor({
+    required this.steps,
+    required this.newStep,
+    required this.focus,
+  });
+  final List<_Step> steps;
+  final TextEditingController newStep;
+  final FocusNode focus;
+
+  @override
+  State<_SubtasksEditor> createState() => _SubtasksEditorState();
+}
+
+class _SubtasksEditorState extends State<_SubtasksEditor> {
+  List<_Step> get _steps => widget.steps;
+  TextEditingController get _newStep => widget.newStep;
+  FocusNode get _newStepFocus => widget.focus;
+
+  void _addStep() {
+    final text = _newStep.text.trim();
+    if (text.isEmpty) return;
+    setState(() {
+      _steps.add(_Step(text, false));
+      _newStep.clear();
+    });
+    _newStepFocus.requestFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _steps.isEmpty ? 'Subtasks' : 'Subtasks (${_steps.length})',
+          style: theme.textTheme.titleSmall,
+        ),
+        if (_steps.isNotEmpty)
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorderItem: (from, to) => setState(() {
+              _steps.insert(to, _steps.removeAt(from));
+            }),
+            children: [
+              for (var i = 0; i < _steps.length; i++)
+                Row(
+                  key: _steps[i].key,
+                  children: [
+                    ReorderableDragStartListener(
+                      index: i,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 12,
+                        ),
+                        child: Icon(Icons.drag_indicator),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 24,
+                      child: Text(
+                        '${i + 1}.',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                    Checkbox(
+                      value: _steps[i].done,
+                      onChanged: (v) =>
+                          setState(() => _steps[i].done = v ?? false),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _steps[i].controller,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove step',
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => setState(() {
+                        _steps.removeAt(i).controller.dispose();
+                      }),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        Row(
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Icon(Icons.add),
+            ),
+            Expanded(
+              child: TextField(
+                controller: _newStep,
+                focusNode: _newStepFocus,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  hintText: 'Add a step',
+                  isDense: true,
+                ),
+                onSubmitted: (_) => _addStep(),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Add step',
+              icon: const Icon(Icons.keyboard_return),
+              onPressed: _addStep,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

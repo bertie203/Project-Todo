@@ -50,6 +50,7 @@ Task draft(
   uid: '',
   updatedAt: 0,
   dirty: true,
+  subtasks: const [],
 );
 
 void main() {
@@ -152,6 +153,59 @@ void main() {
       final s2 = TaskService(db, alarms, clock: () => DateTime(2026, 11, 30));
       final dec = (await s2.complete(nov))!;
       expect(dec.dueDate, DateTime(2026, 12, 31));
+    });
+  });
+
+  group('subtasks', () {
+    test('saved in order and ticked one at a time', () async {
+      final t = await service.create(
+        draft('Report').copyWith(
+          subtasks: const [
+            Subtask('Pull numbers'),
+            Subtask('Write'),
+            Subtask('Send'),
+          ],
+        ),
+      );
+      expect((await db.getTask(t.id))!.subtasks.map((s) => s.title), [
+        'Pull numbers',
+        'Write',
+        'Send',
+      ]);
+      await service.setSubtaskDone(t.id, 1, true);
+      final after = (await db.getTask(t.id))!;
+      expect(after.subtasks.map((s) => s.done), [false, true, false]);
+      expect(after.dirty, isTrue);
+      expect(after.done, isFalse);
+    });
+
+    test('next occurrence of a repeating task gets unticked steps', () async {
+      final t = await service.create(
+        draft(
+          'Bins',
+          due: DateTime(2026, 10, 31),
+          r: Recurrence.weekly,
+        ).copyWith(
+          subtasks: const [
+            Subtask('Black bin', done: true),
+            Subtask('Recycling'),
+          ],
+        ),
+      );
+      final next = (await service.complete(t))!;
+      expect(next.subtasks, const [Subtask('Black bin'), Subtask('Recycling')]);
+    });
+
+    test('backup keeps subtasks', () async {
+      await service.create(
+        draft('Plan')
+            .copyWith(subtasks: const [Subtask('A', done: true), Subtask('B')]),
+      );
+      final db2 = AppDatabase(NativeDatabase.memory());
+      await importBackup(db2, parseBackup(await exportJson(db)));
+      final t = (await db2.select(db2.tasks).get()).single;
+      expect(t.subtasks, const [Subtask('A', done: true), Subtask('B')]);
+      await db2.close();
     });
   });
 

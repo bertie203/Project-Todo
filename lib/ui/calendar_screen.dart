@@ -8,7 +8,7 @@ import '../logic/sorting.dart';
 import '../providers.dart';
 import 'format.dart';
 import 'task_editor.dart';
-import 'widgets/task_tile.dart';
+import 'widgets/task_card.dart';
 
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
@@ -113,7 +113,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     padding: const EdgeInsets.only(bottom: 88),
                     children: [
                       for (final r in selectedRows)
-                        TaskTile(task: r.task, projectName: r.projectName),
+                        TaskCard(task: r.task, projectName: r.projectName),
                     ],
                   ),
           ),

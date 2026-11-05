@@ -122,6 +122,75 @@ void main() {
   );
 
   testWidgets(
+    'tapping a task shows its numbered subtasks and ticks them',
+    timeout: const Timeout(Duration(seconds: 60)),
+    (tester) async {
+      late int id;
+      await tester.runAsync(() async {
+        id = await db.insertTask(
+          TasksCompanion.insert(
+            title: 'Paint fence',
+            dueDate: Value(dateOnly(DateTime.now())),
+            subtasks: const Value([Subtask('Sand'), Subtask('Prime')]),
+          ),
+        );
+      });
+      await pumpApp(tester);
+      expect(find.text('0/2'), findsOneWidget);
+      expect(find.text('Sand'), findsNothing);
+
+      await tester.tap(find.text('Paint fence'));
+      await settle(tester);
+      expect(find.text('1.'), findsOneWidget);
+      expect(find.text('Sand'), findsOneWidget);
+      expect(find.text('2.'), findsOneWidget);
+      expect(find.text('Prime'), findsOneWidget);
+
+      await tester.tap(find.text('Sand'));
+      await settle(tester);
+      expect(find.text('1/2'), findsOneWidget);
+      final t = await tester.runAsync(() => db.getTask(id));
+      expect(t!.subtasks.first.done, isTrue);
+      expect(t.done, isFalse);
+      await closeDb(tester);
+    },
+  );
+
+  testWidgets(
+    'editor adds subtasks in order',
+    timeout: const Timeout(Duration(seconds: 60)),
+    (tester) async {
+      await pumpApp(tester);
+      await tester.tap(find.byType(FloatingActionButton).first);
+      await settle(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Title'),
+        'Move house',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Add a step'),
+        'Book van',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await settle(tester);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Add a step'),
+        'Pack books',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await settle(tester);
+      expect(find.text('Subtasks (2)'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.check));
+      await settle(tester);
+
+      final t = await tester.runAsync(() => db.select(db.tasks).getSingle());
+      expect(t!.title, 'Move house');
+      expect(t.subtasks, const [Subtask('Book van'), Subtask('Pack books')]);
+      await closeDb(tester);
+    },
+  );
+
+  testWidgets(
     'pencil moves a task to tomorrow',
     timeout: const Timeout(Duration(seconds: 60)),
     (tester) async {

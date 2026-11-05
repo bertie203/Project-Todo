@@ -176,6 +176,31 @@ void main() {
     },
   );
 
+  test('subtasks travel both ways', () async {
+    final id = await addTask('Report');
+    await db.updateTask(
+      (await db.getTask(
+        id,
+      ))!.copyWith(subtasks: const [Subtask('Pull numbers'), Subtask('Write')]),
+    );
+    await sync.connect('https://example.test', 'pw');
+    final uid = (await db.getTask(id))!.uid;
+    expect(
+      server.tasks[uid]!['subtasks'],
+      '[{"title":"Pull numbers","done":false},{"title":"Write","done":false}]',
+    );
+
+    // Claude ticks step 1 in the cloud.
+    server.edit(uid, {
+      'subtasks': '[{"title":"Pull numbers","done":true},{"title":"Write","done":false}]',
+    });
+    await sync.syncNow();
+    expect((await db.getTask(id))!.subtasks, const [
+      Subtask('Pull numbers', done: true),
+      Subtask('Write'),
+    ]);
+  });
+
   test('deleting on the phone deletes in the cloud', () async {
     final id = await addTask('Old');
     await sync.connect('https://example.test', 'pw');
@@ -272,6 +297,7 @@ void main() {
     final tasks = await old.select(old.tasks).get();
     expect(tasks.map((t) => t.title), ['Fix tap', 'Call mum']);
     expect(tasks.every((t) => t.uid.length == 36 && t.dirty), isTrue);
+    expect(tasks.every((t) => t.subtasks.isEmpty), isTrue);
     expect(tasks[0].uid, isNot(tasks[1].uid));
     expect((await old.select(old.projects).getSingle()).uid, hasLength(36));
     expect(await old.allTombstones(), isEmpty);

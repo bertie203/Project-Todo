@@ -85,6 +85,18 @@ class TaskService {
     );
   }
 
+  /// Ticks or unticks one step. Reads the latest copy first so a quick
+  /// second tap is not lost.
+  Future<Task?> setSubtaskDone(int taskId, int index, bool done) async {
+    final t = await db.getTask(taskId);
+    if (t == null || index < 0 || index >= t.subtasks.length) return null;
+    final list = [...t.subtasks];
+    list[index] = list[index].copyWith(done: done);
+    final out = t.copyWith(subtasks: list);
+    await db.updateTask(out);
+    return out;
+  }
+
   Future<void> delete(int taskId) async {
     await alarms.cancelFor(taskId);
     await db.deleteTask(taskId);
@@ -117,6 +129,9 @@ class TaskService {
             alarm: Value(task.alarm),
             recurrence: Value(task.recurrence),
             recurrenceDay: Value(task.recurrenceDay),
+            subtasks: Value([
+              for (final s in task.subtasks) s.copyWith(done: false),
+            ]),
             createdAt: Value(now),
           ),
         );

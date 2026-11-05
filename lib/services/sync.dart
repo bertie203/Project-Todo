@@ -319,6 +319,7 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     'alarm': t.alarm ? 1 : 0,
     'recurrence': t.recurrence.name,
     'recurrence_day': t.recurrenceDay,
+    'subtasks': encodeSubtasks(t.subtasks),
     'done': t.done ? 1 : 0,
     'done_at': t.doneAt?.millisecondsSinceEpoch,
     'created_at': t.createdAt.millisecondsSinceEpoch,
@@ -348,6 +349,7 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
     recurrence:
         Recurrence.values.asNameMap()[t['recurrence']] ?? Recurrence.none,
     recurrenceDay: t['recurrence_day'] as int?,
+    subtasks: decodeSubtasks(t['subtasks'] as String?),
     done: t['done'] == 1,
     doneAt: t['done_at'] == null
         ? null

@@ -4,8 +4,10 @@ import 'package:drift_flutter/drift_flutter.dart';
 import '../logic/dates.dart';
 import '../logic/uid.dart';
 import 'enums.dart';
+import 'subtasks.dart';
 
 export 'enums.dart';
+export 'subtasks.dart';
 
 part 'database.g.dart';
 
@@ -47,6 +49,10 @@ class Tasks extends Table {
   IntColumn get recurrenceDay => integer().nullable()();
   BoolColumn get done => boolean().withDefault(const Constant(false))();
   DateTimeColumn get doneAt => dateTime().nullable()();
+
+  /// Ordered steps, stored as JSON.
+  TextColumn get subtasks =>
+      text().map(const SubtasksConverter()).withDefault(const Constant('[]'))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   TextColumn get uid => text().clientDefault(newUid)();
   IntColumn get updatedAt => integer().clientDefault(nowMs)();
@@ -92,7 +98,7 @@ class AppDatabase extends _$AppDatabase {
   );
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -119,6 +125,9 @@ class AppDatabase extends _$AppDatabase {
           }
         }
         await m.createTable(tombstones);
+      }
+      if (from < 3) {
+        await m.addColumn(tasks, tasks.subtasks);
       }
     },
     beforeOpen: (details) async {

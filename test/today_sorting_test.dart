@@ -27,6 +27,7 @@ TaskWithProject t(
     uid: 'u$_id',
     updatedAt: 0,
     dirty: false,
+    subtasks: const [],
   ),
   null,
 );

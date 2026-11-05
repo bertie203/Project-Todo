@@ -45,6 +45,7 @@ Future<String> exportJson(AppDatabase db) async {
           'alarm': t.alarm,
           'recurrence': t.recurrence.name,
           'recurrenceDay': t.recurrenceDay,
+          'subtasks': [for (final s in t.subtasks) s.toJson()],
           'done': t.done,
           'doneAt': t.doneAt?.toIso8601String(),
           'createdAt': t.createdAt.toIso8601String(),
@@ -114,6 +115,10 @@ BackupData parseBackup(String json) {
           alarm: t['alarm'] as bool,
           recurrence: Recurrence.values.byName(t['recurrence'] as String),
           recurrenceDay: t['recurrenceDay'] as int?,
+          subtasks: [
+            for (final s in (t['subtasks'] as List? ?? const []))
+              Subtask.fromJson(s),
+          ],
           done: t['done'] as bool,
           doneAt: t['doneAt'] == null
               ? null

@@ -13,6 +13,8 @@ export interface TaskRow {
   alarm: number;
   recurrence: Recurrence;
   recurrence_day: number | null;
+  /** JSON array of {title, done}. */
+  subtasks: string;
   done: number;
   done_at: number | null;
   created_at: number;
@@ -33,7 +35,7 @@ export interface ProjectRow {
 
 const TASK_COLS = [
   'uid', 'project_uid', 'title', 'notes', 'priority', 'due_date', 'due_time', 'alarm',
-  'recurrence', 'recurrence_day', 'done', 'done_at', 'created_at', 'updated_at', 'deleted', 'rev',
+  'recurrence', 'recurrence_day', 'subtasks', 'done', 'done_at', 'created_at', 'updated_at', 'deleted', 'rev',
 ] as const;
 const PROJECT_COLS = ['uid', 'name', 'archived', 'created_at', 'updated_at', 'deleted', 'rev'] as const;
 
@@ -127,6 +129,7 @@ export class Store {
       alarm: 0,
       recurrence: 'none',
       recurrence_day: null,
+      subtasks: '[]',
       done: 0,
       done_at: null,
       created_at: now,
@@ -160,6 +163,7 @@ export class Store {
       alarm: t.alarm,
       recurrence: t.recurrence,
       recurrence_day: t.recurrence_day,
+      subtasks: JSON.stringify(parseSubtasks(t.subtasks).map((s) => ({ ...s, done: false }))),
     });
   }
 
@@ -226,6 +230,7 @@ function pickTask(t: TaskRow): TaskRow {
     alarm: t.alarm ? 1 : 0,
     recurrence,
     recurrence_day: t.recurrence_day ?? null,
+    subtasks: JSON.stringify(parseSubtasks(t.subtasks)),
     done: t.done ? 1 : 0,
     done_at: t.done_at ?? null,
     created_at: t.created_at ?? t.updated_at,
@@ -248,4 +253,22 @@ function pickProject(p: ProjectRow): ProjectRow {
     deleted: p.deleted ? 1 : 0,
     rev: 0,
   };
+}
+
+export interface Subtask {
+  title: string;
+  done: boolean;
+}
+
+/** Reads the subtasks column; tolerates bad data. */
+export function parseSubtasks(raw: unknown): Subtask[] {
+  try {
+    const list = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((s) => (typeof s === 'string' ? { title: s, done: false } : { title: String(s?.title ?? ''), done: !!s?.done }))
+      .filter((s) => s.title.trim() !== '');
+  } catch {
+    return [];
+  }
 }
